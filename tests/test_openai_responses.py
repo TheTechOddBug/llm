@@ -270,3 +270,108 @@ def test_responses_round_trips_encrypted_reasoning(vcr):
         == pm["openai"]["encrypted_content"]
     )
     assert reasoning_inputs[0]["id"] == pm["openai"]["id"]
+
+
+@pytest.mark.vcr
+def test_responses_interleaved_reasoning_between_tool_calls(vcr):
+    """Tool calls during reasoning: each turn produces fresh reasoning AND
+    every prior reasoning block is round-tripped on every subsequent turn
+    so the model's hidden chain of thought accumulates across the whole
+    chain. This is the GPT-5-class capability that the Chat Completions
+    API can't deliver because it discards reasoning between turns."""
+    from llm.parts import ReasoningPart
+
+    model = llm.get_model("gpt-5.5")
+
+    # Tool whose results force the model to re-plan between calls: each
+    # lookup hands the model a NEW key to use next, so the model has to
+    # think to figure out the next argument. Parallel tool calls would
+    # short-circuit this, so we need the model to reason in series.
+    def db_lookup(key: str) -> str:
+        "Look up a value by key in the puzzle database."
+        table = {
+            "start": "Begin with the value 7.",
+            "step1_7": "Multiply by 13. Now lookup with key step2_<value>.",
+            "step2_91": "Subtract 11. Now lookup with key step3_<value>.",
+            "step3_80": (
+                "The answer is the value modulo 9. State only the integer."
+            ),
+        }
+        return table.get(key, "unknown key")
+
+    conversation = model.conversation(tools=[db_lookup])
+    conversation.chain_limit = 4
+    chain = conversation.chain(
+        "Solve this puzzle: call db_lookup('start'), then follow each "
+        "instruction step by step. Each lookup tells you the next key "
+        "to use. Compute each step in your head. State only the final "
+        "integer.",
+        stream=False,
+        options={"reasoning_effort": "high"},
+        key=API_KEY,
+    )
+    # The chain may exceed the limit - we just want enough turns to
+    # observe interleaved reasoning, then we stop.
+    try:
+        chain.text()
+    except ValueError as e:
+        if "Chain limit" not in str(e):
+            raise
+
+    responses = chain._responses
+    assert len(responses) >= 3, (
+        f"expected at least 3 chained turns, got {len(responses)}"
+    )
+
+    # 1) Fresh reasoning happens on more than just the first turn. This is
+    #    the actual interleaved-reasoning capability, not just round-trip.
+    reasoning_token_counts = []
+    for r in responses:
+        u = r.usage()
+        details = (u.details if u else None) or {}
+        reasoning_token_counts.append(
+            (details.get("output_tokens_details") or {}).get("reasoning_tokens")
+            or 0
+        )
+    turns_with_fresh_reasoning = sum(1 for n in reasoning_token_counts if n > 0)
+    assert turns_with_fresh_reasoning >= 2, (
+        f"expected >=2 turns to produce fresh reasoning, got "
+        f"{turns_with_fresh_reasoning} (counts: {reasoning_token_counts})"
+    )
+
+    # 2) Every reasoning block produced earlier in the chain is round-
+    #    tripped on every subsequent turn. The Nth turn's outgoing input
+    #    must contain at least N-1 reasoning items.
+    for i in range(1, len(responses)):
+        outgoing = (responses[i]._prompt_json or {}).get("input") or []
+        reasoning_count = sum(
+            1 for it in outgoing if it.get("type") == "reasoning"
+        )
+        # encrypted_content + id are non-empty on each one
+        for it in outgoing:
+            if it.get("type") == "reasoning":
+                assert it.get("encrypted_content"), "encrypted_content lost"
+                assert it.get("id"), "reasoning id lost"
+        assert reasoning_count >= i, (
+            f"turn {i} must echo >= {i} reasoning items, got {reasoning_count}"
+        )
+
+    # 3) The captured ReasoningParts on the assistant messages carry the
+    #    opaque metadata that was actually echoed back on the wire.
+    for i, r in enumerate(responses[:-1]):
+        rparts = [
+            p
+            for m in r.messages()
+            for p in m.parts
+            if isinstance(p, ReasoningPart)
+        ]
+        if reasoning_token_counts[i] > 0:
+            assert rparts, (
+                f"turn {i} produced reasoning_tokens={reasoning_token_counts[i]} "
+                "but no ReasoningPart was persisted"
+            )
+            for rp in rparts:
+                pm = (rp.provider_metadata or {}).get("openai") or {}
+                assert pm.get("encrypted_content"), (
+                    "ReasoningPart missing encrypted_content"
+                )
