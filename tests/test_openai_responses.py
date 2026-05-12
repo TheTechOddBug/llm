@@ -90,7 +90,6 @@ def test_responses_input_translation():
         TextPart,
         ToolCallPart,
         ToolResultPart,
-        AttachmentPart,
     )
 
     model = llm.get_model("gpt-5.5")
