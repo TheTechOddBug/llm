@@ -1,8 +1,32 @@
 # Changelog
 
-## unreleased
+(v0_32_a2)=
+## 0.32a2 (2026-05-12)
 
-- New `hide_reasoning=True` keyword argument on `model.prompt()`, `conversation.prompt()`, `model.chain()`, `conversation.chain()`, and their async counterparts, exposed to model plugins as `prompt.hide_reasoning`. Model plugins can use this to decide if they should request visible reasoning summaries from their providers.
+### Support for the OpenAI Responses API
+
+Most reasoning-capable OpenAI models now use the [`/v1/responses`](https://platform.openai.com/docs/api-reference/responses) endpoint instead of `/v1/chat/completions`. This enables interleaved reasoning across tool calls for GPT-5 class models. [#1435](https://github.com/simonw/llm/pull/1435)
+
+- New `Responses` and `AsyncResponses` model classes driving the OpenAI Responses API. The existing `Chat` and `AsyncChat` classes are unchanged so other plugins that import them keep working.
+- The following models now use the Responses API by default: `o1`, `o3-mini`, `o3`, `o4-mini`, `gpt-5`, `gpt-5-mini`, `gpt-5-nano`, `gpt-5.1`, `gpt-5.2`, `gpt-5.4`, `gpt-5.4-mini`, `gpt-5.4-nano`, `gpt-5.5` (and their pinned date variants).
+- Use `-o chat_completions 1` to fall back to the older `/v1/chat/completions` code path for any of these models.
+- Encrypted reasoning items are captured as `provider_metadata` on `ReasoningPart` objects and round-tripped back to OpenAI on subsequent turns.
+- Reasoning summaries are now requested with `"summary": "auto"` so visible reasoning text is streamed back where the model produces it, unless `--hide-reasoning` or `hide_reasoning=` is set.
+- This means OpenAI prompts run using `llm prompt` that return reasoning tokens will display those on standard error.
+
+### CLI
+
+- New `llm -m model --options` flag to list the options supported by a given model. [#1441](https://github.com/simonw/llm/pull/1441)
+- The `-R/--no-reasoning` option has been renamed to `-R/--hide-reasoning`.
+
+### Python API
+
+- New `hide_reasoning=True` keyword argument on `model.prompt()`, `conversation.prompt()`, `model.chain()`, `conversation.chain()`, and their async counterparts, exposed to model plugins as `prompt.hide_reasoning`. Model plugins can {ref}`use this to decide <advanced-model-plugins-reasoning-tokens>` if they should request visible reasoning summaries from their providers. [#1442](https://github.com/simonw/llm/pull/1442)
+- New `options=` dict keyword argument on `Model.prompt()`, `Conversation.prompt()`, `Response.reply()`, and their async equivalents, matching the pattern already used by `.chain()`. The previous `**kwargs` form continues to work for backwards compatibility but is no longer documented, and will be removed in the future. [#1432](https://github.com/simonw/llm/pull/1432)
+
+### Bug fixes
+
+- `add_tool_call()` calls that were not also recorded as stream events are now correctly emitted as `ToolCallPart` objects when assembling response parts, so they survive serialization via `response.to_dict()`. [#1433](https://github.com/simonw/llm/issues/1433)
 
 (v0_32_a1)=
 ## 0.32a1 (2026-04-29)

@@ -315,6 +315,7 @@ In rare cases you'll want to override the default grouping:
 
 You can mix explicit indices with `None` in the same stream — the framework reserves your explicit values and decides the rest.
 
+(advanced-model-plugins-reasoning-tokens)=
 ### Reasoning tokens
 
 For streamed reasoning text:
