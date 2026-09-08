@@ -1903,7 +1903,7 @@ def logs_list(
     id_gte,
     json_output,
     expand,
-):
+) -> None:
     "Show logged prompts and their responses"
     if database and not path:
         path = database
@@ -2280,8 +2280,8 @@ def logs_list(
                 for tool in row["tools"]:
                     instance = tool.get("instance")
                     if instance:
-                        key = (instance["name"], instance["arguments"])
-                        by_instance.setdefault(key, []).append(tool)
+                        instance_key = (instance["name"], instance["arguments"])
+                        by_instance.setdefault(instance_key, []).append(tool)
                     else:
                         plain_tools.append(tool)
                 for tool in plain_tools:
@@ -2818,7 +2818,7 @@ def tools():
     help="Python code block or file path defining functions to register as tools",
     multiple=True,
 )
-def tools_list(tool_defs, json_, model_id, python_tools):
+def tools_list(tool_defs, json_, model_id, python_tools) -> None:
     "List available tools, optionally including tools supported by a model"
 
     model = None
@@ -2828,7 +2828,7 @@ def tools_list(tool_defs, json_, model_id, python_tools):
         except UnknownModelError as ex:
             raise click.ClickException(str(ex))
 
-    server_side_tools = []
+    server_side_tools: list[dict[str, Any]] = []
     if model is not None:
         for tool_class in model.supported_server_side_tools:
             try:
@@ -2867,24 +2867,22 @@ def tools_list(tool_defs, json_, model_id, python_tools):
         return methods
 
     toolbox_specs: dict[int, str] = {}
+    tools: dict[str, Tool | Toolbox | ServerSideTool | type[Toolbox]] = {}
     if tool_defs:
-        tools = {}
         gathered = _gather_tools(tool_defs, python_tools)
         # _gather_tools returns --functions tools first, then one per spec
         specs = [None] * (len(gathered) - len(tool_defs)) + list(tool_defs)
-        for spec, tool in zip(specs, gathered):
-            if hasattr(tool, "name"):
-                tools[tool.name] = tool
-            else:
-                tools[tool.__class__.__name__] = tool
-            if spec is not None and isinstance(tool, Toolbox):
-                toolbox_specs[id(tool)] = spec
+        for spec, gathered_tool in zip(specs, gathered):
+            name = gathered_tool.name or gathered_tool.__class__.__name__
+            tools[name] = gathered_tool
+            if spec is not None and isinstance(gathered_tool, Toolbox):
+                toolbox_specs[id(gathered_tool)] = spec
     else:
-        tools = get_tools()
+        tools.update(get_tools())
         if python_tools:
             for code_or_path in python_tools:
-                for tool in _tools_from_code(code_or_path):
-                    tools[tool.name] = tool
+                for code_tool in _tools_from_code(code_or_path):
+                    tools[code_tool.name] = code_tool
 
     output_tools = []
     output_toolboxes = []

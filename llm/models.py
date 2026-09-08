@@ -35,7 +35,7 @@ from .errors import NeedsKeyException
 from .serialization import ResponseDict
 
 if TYPE_CHECKING:
-    from .parts import StreamEvent
+    from .parts import Message, StreamEvent
 import inspect
 import json
 from abc import ABC, abstractmethod
@@ -467,7 +467,7 @@ class PauseChain(Exception):
     calls.
     """
 
-    def __init__(self, *args):
+    def __init__(self, *args) -> None:
         super().__init__(*args)
         self.tool_call: ToolCall | None = None
         self.tool_results: list[ToolResult] = []
@@ -480,7 +480,7 @@ class Prompt:
     _prompt: str | None
     model: "Model"
     fragments: list[str | Fragment] | None
-    attachments: list[Attachment] | None
+    attachments: list[Attachment]
     _system: str | None
     system_fragments: list[str | Fragment] | None
     prompt_json: str | None
@@ -536,7 +536,7 @@ class Prompt:
         return _combine_system(self._system, self.system_fragments)
 
     @property
-    def messages(self):
+    def messages(self) -> list["Message"]:
         """Canonical list of Message objects for this prompt.
 
         **Invariant:** this property returns exactly what the model
