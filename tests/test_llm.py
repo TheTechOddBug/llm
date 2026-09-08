@@ -1067,7 +1067,7 @@ def test_all_third_party_imports_are_declared():
         # Skip anything gated behind an extra - those aren't guaranteed installed
         if "extra ==" in requirement:
             continue
-        declared.add(normalize(re.split(r"[<>=!~;\s\[]", requirement, 1)[0]))
+        declared.add(normalize(re.split(r"[<>=!~;\s\[]", requirement, maxsplit=1)[0]))
 
     module_to_distributions = metadata.packages_distributions()
 
