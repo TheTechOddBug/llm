@@ -20,10 +20,9 @@ from llm.models import Usage
 
 def test_version():
     runner = CliRunner()
-    with runner.isolated_filesystem():
-        result = runner.invoke(cli, ["--version"])
-        assert result.exit_code == 0
-        assert result.output.startswith("cli, version ")
+    result = runner.invoke(cli, ["--version"])
+    assert result.exit_code == 0
+    assert result.output.startswith("cli, version ")
 
 
 @pytest.mark.parametrize("custom_database_path", (False, True))

@@ -153,14 +153,16 @@ def test_templates_list(templates_path, args):
         ),
     ),
 )
-def test_templates_prompt_save(templates_path, args, expected, expected_error):
+def test_templates_prompt_save(
+    templates_path, args, expected, expected_error, tmp_path, monkeypatch
+):
     assert not (templates_path / "saved.yaml").exists()
     runner = CliRunner()
-    with runner.isolated_filesystem():
-        # Create a file to test attachment
-        pathlib.Path("a.txt").write_text("attachment", "utf-8")
-        pathlib.Path("b.txt").write_text("attachment type", "utf-8")
-        result = runner.invoke(cli, args + ["--save", "saved"], catch_exceptions=False)
+    monkeypatch.chdir(tmp_path)
+    # Create a file to test attachment
+    pathlib.Path("a.txt").write_text("attachment", "utf-8")
+    pathlib.Path("b.txt").write_text("attachment type", "utf-8")
+    result = runner.invoke(cli, args + ["--save", "saved"], catch_exceptions=False)
     if not expected_error:
         assert result.exit_code == 0
         yaml_data = yaml.safe_load((templates_path / "saved.yaml").read_text("utf-8"))
@@ -439,24 +441,23 @@ def test_execute_prompt_from_template_url(httpx2_mock, template, expected):
         assert result.output.strip() == expected
 
 
-def test_execute_prompt_from_template_path():
+def test_execute_prompt_from_template_path(tmp_path):
     runner = CliRunner()
-    with runner.isolated_filesystem() as temp_dir:
-        path = pathlib.Path(temp_dir) / "my-template.yaml"
-        path.write_text("system: system\nprompt: prompt", "utf-8")
-        result = runner.invoke(
-            cli,
-            ["-t", str(path), "-m", "echo"],
-            catch_exceptions=False,
-        )
-        assert result.exit_code == 0, result.output
-        assert json.loads(result.output) == {
-            "prompt": "prompt",
-            "system": "system",
-            "attachments": [],
-            "stream": True,
-            "previous": [],
-        }
+    path = tmp_path / "my-template.yaml"
+    path.write_text("system: system\nprompt: prompt", "utf-8")
+    result = runner.invoke(
+        cli,
+        ["-t", str(path), "-m", "echo"],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.output) == {
+        "prompt": "prompt",
+        "system": "system",
+        "attachments": [],
+        "stream": True,
+        "previous": [],
+    }
 
 
 def test_template_respects_cli_extract_flag(
